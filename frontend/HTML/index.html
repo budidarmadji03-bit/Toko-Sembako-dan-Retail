@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RetailPro - Dashboard</title>
+  <link rel="stylesheet" href="../CSS/style.css">
+</head>
+<body>
+  <div id="toast" class="toast"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">Retail<span>Pro</span></div>
+      <p class="sidebar-subtitle">Retail Management</p>
+      <nav>
+        <button class="nav-item active" data-section="dashboard">Dashboard</button>
+        <button class="nav-item" data-section="products">Produk</button>
+        <button class="nav-item" data-section="categories">Kategori</button>
+        <button class="nav-item" data-section="sales">Penjualan</button>
+        <button class="nav-item" data-section="inventory">Persediaan</button>
+        <button class="nav-item" data-section="reports">Laporan</button>
+      </nav>
+      <button id="logoutBtn" class="nav-item logout">Keluar</button>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Dashboard</h1>
+          <p id="todayText" class="muted"></p>
+        </div>
+        <div class="user-area">
+          <span id="modeBadge" class="mode-badge">DEMO</span> <span id="userEmail"></span>
+        </div>
+      </header>
+
+      <section id="dashboard" class="section active">
+        <div class="stats-grid">
+          <div class="stat-card"><span>Total Produk</span><strong id="statProducts">0</strong></div>
+          <div class="stat-card"><span>Total Stok</span><strong id="statStock">0</strong></div>
+          <div class="stat-card"><span>Penjualan Hari Ini</span><strong id="statSales">Rp0</strong></div>
+          <div class="stat-card"><span>Transaksi Hari Ini</span><strong id="statTransactions">0</strong></div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header"><h2>Stok Menipis</h2><button class="link-btn" data-section-link="inventory">Lihat semua</button></div>
+            <div class="table-wrap"><table><thead><tr><th>Kode</th><th>Produk</th><th>Stok</th><th>Status</th></tr></thead><tbody id="lowStockBody"></tbody></table></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h2>Transaksi Terbaru</h2></div>
+            <div class="table-wrap"><table><thead><tr><th>Invoice</th><th>Tanggal</th><th>Total</th></tr></thead><tbody id="recentSalesBody"></tbody></table></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="products" class="section">
+        <div class="section-toolbar">
+          <div><h2>Master Produk</h2><p class="muted">Kelola barang yang dijual di toko.</p></div>
+          <button id="addProductBtn" class="btn primary">+ Tambah Produk</button>
+        </div>
+        <div class="card">
+          <div class="filter-row"><input id="productSearch" placeholder="Cari kode atau nama produk..."><select id="productCategoryFilter"><option value="">Semua kategori</option></select></div>
+          <div class="table-wrap"><table><thead><tr><th>Kode</th><th>Produk</th><th>Kategori</th><th>Unit</th><th>Harga Beli</th><th>Harga Jual</th><th>Stok</th><th>Aksi</th></tr></thead><tbody id="productsBody"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="categories" class="section">
+        <div class="section-toolbar">
+          <div><h2>Master Kategori</h2><p class="muted">Kelompokkan produk berdasarkan jenisnya.</p></div>
+          <button id="addCategoryBtn" class="btn primary">+ Tambah Kategori</button>
+        </div>
+        <div class="card"><div class="table-wrap"><table><thead><tr><th>Nama Kategori</th><th>Deskripsi</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody id="categoriesBody"></tbody></table></div></div>
+      </section>
+
+      <section id="sales" class="section">
+        <div class="section-toolbar"><div><h2>Transaksi Penjualan</h2><p class="muted">Buat invoice dan kurangi stok secara otomatis.</p></div></div>
+        <div class="sales-layout">
+          <div class="card">
+            <div class="filter-row"><input id="saleProductSearch" placeholder="Cari produk..."><select id="saleProductSelect"><option value="">Pilih produk</option></select></div>
+            <div id="saleProductInfo" class="product-info"></div>
+            <div class="qty-row"><label>Quantity <input id="saleQty" type="number" min="0.001" step="0.001" value="1"></label><button id="addToCartBtn" class="btn primary">Tambah ke Keranjang</button></div>
+          </div>
+          <div class="card cart-card">
+            <div class="card-header"><h2>Keranjang</h2><button id="clearCartBtn" class="link-btn">Kosongkan</button></div>
+            <div class="table-wrap"><table><thead><tr><th>Produk</th><th>Qty</th><th>Harga</th><th>Subtotal</th><th></th></tr></thead><tbody id="cartBody"></tbody></table></div>
+            <div class="checkout">
+              <div class="total-line"><span>Total</span><strong id="cartTotal">Rp0</strong></div>
+              <label>Metode Pembayaran
+                <select id="paymentMethod"><option value="CASH">Cash</option><option value="QRIS">QRIS</option><option value="TRANSFER">Transfer</option></select>
+              </label>
+              <label>Dibayar <input id="paidAmount" type="number" min="0" step="1" value="0"></label>
+              <div class="total-line"><span>Kembalian</span><strong id="changeAmount">Rp0</strong></div>
+              <button id="checkoutBtn" class="btn primary full">Simpan Transaksi</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="inventory" class="section">
+        <div class="section-toolbar"><div><h2>Persediaan</h2><p class="muted">Pantau stok dan lakukan penambahan stok.</p></div></div>
+        <div class="card"><div class="table-wrap"><table><thead><tr><th>Kode</th><th>Produk</th><th>Kategori</th><th>Stok</th><th>Minimum</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="inventoryBody"></tbody></table></div></div>
+      </section>
+
+      <section id="reports" class="section">
+        <div class="section-toolbar"><div><h2>Laporan Penjualan</h2><p class="muted">Riwayat transaksi berdasarkan periode.</p></div>
+          <div class="filter-row compact"><input id="reportStart" type="date"><input id="reportEnd" type="date"><button id="loadReportBtn" class="btn secondary">Tampilkan</button></div>
+        </div>
+        <div class="card">
+          <div class="report-summary"><span>Total transaksi: <strong id="reportCount">0</strong></span><span>Total penjualan: <strong id="reportTotal">Rp0</strong></span></div>
+          <div class="table-wrap"><table><thead><tr><th>Invoice</th><th>Tanggal</th><th>Pembayaran</th><th>Total</th><th>Dibayar</th><th>Kembalian</th></tr></thead><tbody id="reportsBody"></tbody></table></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="productDialog">
+    <form method="dialog" id="productForm" class="modal-form">
+      <div class="modal-header"><h2 id="productDialogTitle">Tambah Produk</h2><button type="button" class="icon-btn" data-close-dialog="productDialog">×</button></div>
+      <input id="productId" type="hidden">
+      <label>Kategori<select id="productCategory" required></select></label>
+      <label>Kode Produk<input id="productCode" maxlength="50" required></label>
+      <label>Nama Produk<input id="productName" maxlength="150" required></label>
+      <label>Unit<input id="productUnit" value="pcs" required></label>
+      <label>Harga Beli<input id="purchasePrice" type="number" min="0" step="0.01" required></label>
+      <label>Harga Jual<input id="sellingPrice" type="number" min="0" step="0.01" required></label>
+      <label>Stok Awal<input id="productStock" type="number" min="0" step="0.001" value="0" required></label>
+      <label>Minimum Stok<input id="minimumStock" type="number" min="0" step="0.001" value="0" required></label>
+      <div class="modal-actions"><button type="button" class="btn secondary" data-close-dialog="productDialog">Batal</button><button class="btn primary" type="submit">Simpan</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="categoryDialog">
+    <form method="dialog" id="categoryForm" class="modal-form">
+      <div class="modal-header"><h2 id="categoryDialogTitle">Tambah Kategori</h2><button type="button" class="icon-btn" data-close-dialog="categoryDialog">×</button></div>
+      <input id="categoryId" type="hidden">
+      <label>Nama Kategori<input id="categoryName" maxlength="100" required></label>
+      <label>Deskripsi<textarea id="categoryDescription" rows="4"></textarea></label>
+      <div class="modal-actions"><button type="button" class="btn secondary" data-close-dialog="categoryDialog">Batal</button><button class="btn primary" type="submit">Simpan</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="stockDialog">
+    <form method="dialog" id="stockForm" class="modal-form">
+      <div class="modal-header"><h2>Tambah Stok</h2><button type="button" class="icon-btn" data-close-dialog="stockDialog">×</button></div>
+      <input id="stockProductId" type="hidden">
+      <p id="stockProductName" class="muted"></p>
+      <label>Jumlah Masuk<input id="stockQuantity" type="number" min="0.001" step="0.001" required></label>
+      <label>Catatan<textarea id="stockNotes" rows="3" placeholder="Contoh: Pembelian supplier"></textarea></label>
+      <div class="modal-actions"><button type="button" class="btn secondary" data-close-dialog="stockDialog">Batal</button><button class="btn primary" type="submit">Tambah Stok</button></div>
+    </form>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../JS/config.js"></script>
+  <script src="../JS/app.js"></script>
+</body>
+</html>
