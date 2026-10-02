@@ -1,0 +1,79 @@
+@media screen {
+  .receipt-print { display: none; }
+}
+
+@media print {
+  @page { margin: 12mm; }
+
+  * {
+    color: #111 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html, body {
+    width: 100%;
+    min-height: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+    font: 10pt/1.35 Arial, sans-serif !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .sidebar, .toast, .user-area, .filter-row, .sales-layout, button, dialog,
+  .action-group, .nav-item {
+    display: none !important;
+  }
+
+  .app-shell { display: block !important; }
+  .main-content { margin: 0 !important; padding: 0 !important; }
+  .topbar { display: none !important; }
+  .section { display: none !important; }
+  .section.active { display: block !important; }
+  .section-toolbar { display: block !important; margin: 0 0 12pt !important; }
+  .section-toolbar h2 { margin: 0 !important; font-size: 16pt !important; }
+  .section-toolbar p { margin: 4pt 0 0 !important; }
+  .toolbar-actions { display: none !important; }
+  .card, .stat-card { border: 0 !important; border-radius: 0 !important; padding: 0 !important; }
+  .sales-history-card { display: block !important; margin-top: 0 !important; }
+  .card-header { margin-bottom: 8pt !important; }
+  .report-summary { display: flex !important; justify-content: space-between; margin: 0 0 10pt !important; }
+  .report-print-heading[hidden] { display: block !important; margin-bottom: 10pt; }
+  .report-print-heading h2 { margin: 0 0 3pt; font-size: 15pt !important; }
+  .report-print-heading p { margin: 0; }
+  .table-wrap { overflow: visible !important; border: 0 !important; }
+  table { width: 100% !important; border-collapse: collapse !important; font-size: 9pt !important; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  th, td { padding: 5pt 4pt !important; border: 1px solid #999 !important; text-align: left; }
+  th { font-weight: 700 !important; }
+  #products th:last-child, #products td:last-child,
+  #categories th:last-child, #categories td:last-child,
+  #inventory th:last-child, #inventory td:last-child,
+  .sales-history-card th:last-child, .sales-history-card td:last-child { display: none !important; }
+  .badge { border: 1px solid #777 !important; padding: 1pt 3pt !important; }
+
+  body:not(.print-receipt) .receipt-print { display: none !important; }
+  body.print-receipt .app-shell { display: none !important; }
+  body.print-receipt .receipt-print {
+    display: block !important;
+    width: min(80mm, 100%);
+    margin: 0 auto;
+    font: 9pt/1.3 Arial, sans-serif !important;
+  }
+  .receipt-brand { text-align: center; font-size: 16pt !important; font-weight: 700; }
+  .receipt-subtitle, .receipt-thanks { text-align: center; }
+  .receipt-meta { margin: 10pt 0; padding: 7pt 0; border-top: 1px dashed #555; border-bottom: 1px dashed #555; }
+  .receipt-print table { font-size: 8pt !important; }
+  .receipt-print th, .receipt-print td { padding: 3pt 2pt !important; border: 0 !important; }
+  .receipt-print th:first-child, .receipt-print td:first-child { text-align: left; }
+  .receipt-print th:not(:first-child), .receipt-print td:not(:first-child) { text-align: right; }
+  .receipt-totals { margin-top: 8pt; padding-top: 6pt; border-top: 1px dashed #555; }
+  .receipt-totals div { display: flex; justify-content: space-between; margin: 3pt 0; }
+  .receipt-grand-total { font-weight: 700; }
+  .receipt-thanks { margin-top: 14pt; }
+}

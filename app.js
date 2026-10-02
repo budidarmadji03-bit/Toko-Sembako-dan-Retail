@@ -5,6 +5,9 @@ const qtyFormat = (n) => new Intl.NumberFormat("id-ID", { maximumFractionDigits:
 let categories = [];
 let products = [];
 let cart = [];
+let salesHistory = [];
+let reportRows = [];
+let lastReceiptSaleId = null;
 let mode = "LOCAL";
 let busy = false;
 
@@ -44,6 +47,7 @@ async function init() {
     if (mode === "LOCAL") loadLocalData();
     else await loadSupabaseData();
     renderAll();
+    await loadSalesHistory();
     await loadDashboard();
     await loadReport();
   } catch (err) {
@@ -78,6 +82,19 @@ function setupEvents() {
   $("addCategoryBtn")?.addEventListener("click", () => openCategoryDialog());
   $("categoryForm")?.addEventListener("submit", saveCategory);
   $("saleProductSearch")?.addEventListener("input", renderSaleProductOptions);
+  $("saleProductSearch")?.addEventListener("keydown", event => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      $("saleProductResults")?.querySelector("[data-sale-product-id]")?.focus();
+    } else if (event.key === "Enter" && $("saleProductResults")?.querySelector("[data-sale-product-id]")) {
+      event.preventDefault();
+      chooseSaleProduct($("saleProductResults").querySelector("[data-sale-product-id]").dataset.saleProductId);
+    }
+  });
+  $("saleProductResults")?.addEventListener("click", event => {
+    const option = event.target.closest("[data-sale-product-id]");
+    if (option) chooseSaleProduct(option.dataset.saleProductId);
+  });
   $("saleProductSelect")?.addEventListener("change", showSelectedSaleProduct);
   $("addToCartBtn")?.addEventListener("click", addToCart);
   $("clearCartBtn")?.addEventListener("click", () => { cart = []; renderCart(); });
@@ -85,7 +102,17 @@ function setupEvents() {
   $("checkoutBtn")?.addEventListener("click", checkout);
   $("stockForm")?.addEventListener("submit", saveStock);
   $("loadReportBtn")?.addEventListener("click", loadReport);
+  $("reportType")?.addEventListener("change", loadReport);
+  document.querySelectorAll("[data-export]").forEach(button => button.addEventListener("click", () => exportExcel(button.dataset.export)));
+  document.querySelectorAll("[data-print]").forEach(button => button.addEventListener("click", () => window.print()));
+  $("printLastReceiptBtn")?.addEventListener("click", () => printReceipt(lastReceiptSaleId));
   document.querySelectorAll("[data-close-dialog]").forEach(b => b.addEventListener("click", () => closeDialog(b.dataset.closeDialog)));
+}
+
+function getFilteredProducts() {
+  const q = ($("productSearch")?.value || "").toLowerCase().trim();
+  const cat = $("productCategoryFilter")?.value || "";
+  return products.filter(p => (!q || `${p.product_code} ${p.product_name}`.toLowerCase().includes(q)) && (!cat || p.category_id === cat));
 }
 
 function closeDialog(id) { const d = $(id); if (d?.open) d.close(); }
@@ -138,14 +165,13 @@ function fillCategorySelects() {
 }
 
 function renderProducts() {
-  const q = ($("productSearch")?.value || "").toLowerCase().trim();
-  const cat = $("productCategoryFilter")?.value || "";
-  const rows = products.filter(p => (!q || `${p.product_code} ${p.product_name}`.toLowerCase().includes(q)) && (!cat || p.category_id === cat));
-  $("productsBody").innerHTML = rows.length ? rows.map(p => `<tr><td>${esc(p.product_code)}</td><td>${esc(p.product_name)}</td><td>${esc(p.categories?.category_name || categoryName(p.category_id))}</td><td>${esc(p.unit)}</td><td>${rupiah(p.purchase_price)}</td><td>${rupiah(p.selling_price)}</td><td>${qtyFormat(p.stock)}</td><td><div class="action-group"><button class="btn secondary" onclick="editProduct('${p.product_id}')">Edit</button><button class="btn danger" onclick="deleteProduct('${p.product_id}')">Hapus</button></div></td></tr>`).join("") : emptyRow(8, "Belum ada produk.");
+  const rows = getFilteredProducts();
+  $("productsBody").innerHTML = rows.length ? rows.map(p => `<tr class="${p.is_active === false ? "product-inactive" : ""}"><td>${esc(p.product_code)}</td><td>${esc(p.product_name)}</td><td>${esc(p.categories?.category_name || categoryName(p.category_id))}</td><td>${esc(p.unit)}</td><td>${rupiah(p.purchase_price)}</td><td>${rupiah(p.selling_price)}</td><td>${qtyFormat(p.stock)}</td><td><div class="action-group"><button class="btn secondary" onclick="editProduct('${p.product_id}')">Edit</button><button class="btn ${p.is_active === false ? "secondary" : "danger"}" onclick="deleteProduct('${p.product_id}')">${p.is_active === false ? "Aktifkan" : "Hapus"}</button></div></td></tr>`).join("") : emptyRow(8, "Belum ada produk.");
 }
 
 function renderInventory() {
-  $("inventoryBody").innerHTML = products.length ? products.map(p => `<tr><td>${esc(p.product_code)}</td><td>${esc(p.product_name)}</td><td>${esc(p.categories?.category_name || categoryName(p.category_id))}</td><td>${qtyFormat(p.stock)}</td><td>${qtyFormat(p.minimum_stock)}</td><td>${stockBadge(p)}</td><td><button class="btn primary" onclick="openStockDialog('${p.product_id}')">+ Stok</button></td></tr>`).join("") : emptyRow(7, "Belum ada data.");
+  const activeProducts = products.filter(product => product.is_active !== false);
+  $("inventoryBody").innerHTML = activeProducts.length ? activeProducts.map(p => `<tr><td>${esc(p.product_code)}</td><td>${esc(p.product_name)}</td><td>${esc(p.categories?.category_name || categoryName(p.category_id))}</td><td>${qtyFormat(p.stock)}</td><td>${qtyFormat(p.minimum_stock)}</td><td>${stockBadge(p)}</td><td><button class="btn primary" onclick="openStockDialog('${p.product_id}')">+ Stok</button></td></tr>`).join("") : emptyRow(7, "Belum ada data.");
 }
 
 function openProductDialog(id = null) {
@@ -177,15 +203,89 @@ async function saveProduct(e) {
 }
 
 window.deleteProduct = async (id) => {
-  const p=products.find(x=>x.product_id===id); if(!p || !confirm(`Hapus produk "${p.product_name}"?`)) return;
+  const product = products.find(item => item.product_id === id);
+  if (!product) return;
+  const isActive = product.is_active !== false;
+  const prompt = isActive
+    ? `Hapus produk "${product.product_name}"? Jika memiliki riwayat transaksi atau stok, produk akan dinonaktifkan agar riwayat tetap tersimpan.`
+    : `Aktifkan kembali produk "${product.product_name}"?`;
+  if (!confirm(prompt)) return;
+
   try {
-    if (mode === "LOCAL") products=products.filter(x=>x.product_id!==id); else { const r=await supabaseClient.from("products").delete().eq("product_id",id); if(r.error) throw r.error; }
-    if(mode === "LOCAL") persistLocal(); notify("Produk berhasil dihapus."); await refresh();
-  } catch(err) { notify("Produk tidak dapat dihapus. Pastikan belum digunakan dalam transaksi.", true); }
+    if (!isActive) {
+      if (mode === "LOCAL") product.is_active = true;
+      else {
+        const result = await supabaseClient.from("products").update({ is_active: true }).eq("product_id", id);
+        if (result.error) throw result.error;
+      }
+      if (mode === "LOCAL") persistLocal();
+      notify("Produk berhasil diaktifkan kembali.");
+    } else if (mode === "LOCAL") {
+      const hasSales = (window.localSales || []).some(sale => sale.items?.some(item => item.product_id === id));
+      const hasMovements = (window.localMovements || []).some(movement => movement.product_id === id);
+      if (hasSales || hasMovements) {
+        product.is_active = false;
+        notify("Produk memiliki riwayat dan telah dinonaktifkan.");
+      } else {
+        products = products.filter(item => item.product_id !== id);
+        notify("Produk berhasil dihapus.");
+      }
+      persistLocal();
+    } else {
+      const result = await supabaseClient.from("products").delete().eq("product_id", id);
+      if (result.error?.code === "23503") {
+        const archive = await supabaseClient.from("products").update({ is_active: false }).eq("product_id", id);
+        if (archive.error) throw archive.error;
+        notify("Produk memiliki riwayat dan telah dinonaktifkan.");
+      } else if (result.error) {
+        throw result.error;
+      } else {
+        notify("Produk berhasil dihapus.");
+      }
+    }
+    await refresh();
+  } catch (error) {
+    notify(normalizeError(error), true);
+  }
 };
 
 function renderCategories() {
   $("categoriesBody").innerHTML = categories.length ? categories.map(c=>`<tr><td>${esc(c.category_name)}</td><td>${esc(c.description||"-")}</td><td>${formatDate(c.created_at)}</td><td><div class="action-group"><button class="btn secondary" onclick="editCategory('${c.category_id}')">Edit</button><button class="btn danger" onclick="deleteCategory('${c.category_id}')">Hapus</button></div></td></tr>`).join("") : emptyRow(4,"Belum ada kategori.");
+}
+
+async function loadSalesHistory() {
+  if (mode === "LOCAL") {
+    salesHistory = (window.localSales || []).slice().sort((a, b) => new Date(b.sale_date) - new Date(a.sale_date));
+  } else {
+    const result = await supabaseClient.from("sales").select("*").order("sale_date", { ascending: false });
+    if (result.error) throw result.error;
+    salesHistory = await attachSaleItems(result.data || []);
+  }
+  renderSalesHistory();
+}
+
+async function attachSaleItems(sales) {
+  if (!sales.length) return [];
+  if (mode === "LOCAL") return sales.map(sale => ({ ...sale, items: sale.items || [] }));
+  const result = await supabaseClient.from("sale_items").select("sale_id, product_id, quantity, selling_price, subtotal").in("sale_id", sales.map(sale => sale.sale_id));
+  if (result.error) throw result.error;
+  const itemsBySale = new Map();
+  (result.data || []).forEach(item => {
+    const product = products.find(p => p.product_id === item.product_id);
+    const items = itemsBySale.get(item.sale_id) || [];
+    items.push({ ...item, product_name: product?.product_name || "-", unit: product?.unit || "" });
+    itemsBySale.set(item.sale_id, items);
+  });
+  return sales.map(sale => ({ ...sale, items: itemsBySale.get(sale.sale_id) || [] }));
+}
+
+function renderSalesHistory() {
+  const rows = [];
+  salesHistory.forEach(sale => {
+    const items = sale.items?.length ? sale.items : [{ product_name: "-", quantity: 0, selling_price: 0, subtotal: Number(sale.total_amount || 0), unit: "" }];
+    items.forEach(item => rows.push(`<tr><td>${esc(sale.invoice_no)}</td><td>${formatDate(sale.sale_date)}</td><td>${esc(item.product_name)}</td><td>${qtyFormat(item.quantity)} ${esc(item.unit || "")}</td><td>${rupiah(item.selling_price)}</td><td>${rupiah(item.subtotal ?? Number(item.quantity || 0) * Number(item.selling_price || 0))}</td><td>${rupiah(sale.total_amount)}</td><td><button class="btn secondary" onclick="printReceipt('${esc(sale.sale_id)}')">Cetak Struk</button></td></tr>`));
+  });
+  $("salesHistoryBody").innerHTML = rows.length ? rows.join("") : emptyRow(8, "Belum ada transaksi.");
 }
 function openCategoryDialog(id=null) {
   $("categoryForm").reset(); $("categoryId").value=""; $("categoryDialogTitle").textContent=id?"Edit Kategori":"Tambah Kategori";
@@ -204,27 +304,188 @@ async function saveCategory(e){
 }
 window.deleteCategory=async(id)=>{const c=categories.find(x=>x.category_id===id);if(!c||!confirm(`Hapus kategori "${c.category_name}"?`))return;try{if(mode==="LOCAL"){if(products.some(p=>p.category_id===id))throw new Error("Kategori masih digunakan oleh produk.");categories=categories.filter(x=>x.category_id!==id);persistLocal();}else{const r=await supabaseClient.from("categories").delete().eq("category_id",id);if(r.error)throw r.error;}notify("Kategori berhasil dihapus.");await refresh();}catch(err){notify(normalizeError(err),true);}};
 
-function renderSaleProductOptions(){const q=($('saleProductSearch')?.value||'').toLowerCase().trim();const rows=products.filter(p=>p.is_active!==false&&(!q||`${p.product_code} ${p.product_name}`.toLowerCase().includes(q)));$('saleProductSelect').innerHTML='<option value="">Pilih produk</option>'+rows.map(p=>`<option value="${esc(p.product_id)}">${esc(p.product_code)} - ${esc(p.product_name)} (stok ${qtyFormat(p.stock)})</option>`).join('');showSelectedSaleProduct();}
+function renderSaleProductOptions() {
+  const query = ($("saleProductSearch")?.value || "").toLowerCase().trim();
+  const rows = products.filter(product => product.is_active !== false && (!query || `${product.product_code} ${product.product_name}`.toLowerCase().includes(query)));
+  $("saleProductSelect").innerHTML = `<option value="">Pilih produk</option>${rows.map(product => `<option value="${esc(product.product_id)}">${esc(product.product_code)} - ${esc(product.product_name)} (stok ${qtyFormat(product.stock)})</option>`).join("")}`;
+  const results = $("saleProductResults");
+  results.hidden = !query;
+  results.innerHTML = query ? rows.length
+    ? rows.map(product => `<button type="button" class="sale-product-option" role="option" data-sale-product-id="${esc(product.product_id)}"><strong>${esc(product.product_code)} - ${esc(product.product_name)}</strong><span>Stok ${qtyFormat(product.stock)} ${esc(product.unit)}</span></button>`).join("")
+    : '<div class="sale-product-empty">Produk tidak ditemukan.</div>' : "";
+  showSelectedSaleProduct();
+}
+
+function chooseSaleProduct(productId) {
+  $("saleProductSearch").value = "";
+  renderSaleProductOptions();
+  $("saleProductSelect").value = productId;
+  showSelectedSaleProduct();
+}
 function showSelectedSaleProduct(){const p=products.find(x=>x.product_id===$('saleProductSelect').value);$('saleProductInfo').innerHTML=p?`<strong>${esc(p.product_name)}</strong><span>Harga: ${rupiah(p.selling_price)} / ${esc(p.unit)} · Stok: ${qtyFormat(p.stock)}</span>`:'';}
 function addToCart(){const id=$('saleProductSelect').value,q=Number($('saleQty').value),p=products.find(x=>x.product_id===id);if(!p)return notify('Pilih produk terlebih dahulu.',true);if(!Number.isFinite(q)||q<=0)return notify('Quantity harus lebih dari 0.',true);if(p.stock<=0)return notify('Stok produk habis.',true);const old=cart.find(x=>x.product_id===id),newQty=(old?.quantity||0)+q;if(newQty>Number(p.stock))return notify(`Stok ${p.product_name} tidak mencukupi.`,true);if(old)old.quantity=newQty;else cart.push({product_id:p.product_id,product_name:p.product_name,unit:p.unit,selling_price:Number(p.selling_price),quantity:q});$('saleQty').value=1;renderCart();}
 function renderCart(){const body=$('cartBody');body.innerHTML=cart.length?cart.map((x,i)=>`<tr><td>${esc(x.product_name)}</td><td>${qtyFormat(x.quantity)} ${esc(x.unit)}</td><td>${rupiah(x.selling_price)}</td><td>${rupiah(x.quantity*x.selling_price)}</td><td><button class="btn danger" onclick="removeCartItem(${i})">×</button></td></tr>`).join(''):emptyRow(5,'Keranjang kosong.');const total=cart.reduce((s,x)=>s+x.quantity*x.selling_price,0);setText('cartTotal',rupiah(total));updateChange();}
 window.removeCartItem=i=>{if(i>=0&&i<cart.length)cart.splice(i,1);renderCart();};
 function updateChange(){const total=cart.reduce((s,x)=>s+x.quantity*x.selling_price,0),paid=Number($('paidAmount').value||0);setText('changeAmount',rupiah(Math.max(0,paid-total)));}
 
-async function checkout(){if(busy)return;if(!cart.length)return notify('Keranjang masih kosong.',true);const total=cart.reduce((s,x)=>s+x.quantity*x.selling_price,0),paid=Number($('paidAmount').value||0);if(!Number.isFinite(paid)||paid<total)return notify(`Pembayaran kurang ${rupiah(total-paid)}.`,true);busy=true;$('checkoutBtn').disabled=true;$('checkoutBtn').textContent='Menyimpan...';try{if(mode==='LOCAL'){for(const item of cart){const p=products.find(x=>x.product_id===item.product_id);if(!p||p.stock<item.quantity)throw new Error(`Stok ${item.product_name} tidak mencukupi.`);}const sale={sale_id:uid('sale'),invoice_no:'INV-DEMO-'+Date.now(),sale_date:new Date().toISOString(),payment_method:$('paymentMethod').value,total_amount:total,paid_amount:paid,change_amount:paid-total};window.localSales.push(sale);for(const item of cart){const p=products.find(x=>x.product_id===item.product_id);p.stock-=item.quantity;window.localMovements.push({movement_id:uid('mov'),product_id:p.product_id,movement_type:'OUT',quantity:item.quantity,reference_no:sale.invoice_no,created_at:new Date().toISOString()});}persistLocal();notify(`Transaksi ${sale.invoice_no} berhasil disimpan.`);}else{const r=await supabaseClient.rpc('create_sale',{p_payment_method:$('paymentMethod').value,p_paid_amount:paid,p_items:cart.map(x=>({product_id:x.product_id,quantity:x.quantity}))});if(r.error)throw r.error;notify(`Transaksi ${r.data.invoice_no} berhasil disimpan.`);}cart=[];$('paidAmount').value=0;renderCart();await refresh();await loadDashboard();await loadReport();}catch(err){notify(normalizeError(err),true);}finally{busy=false;$('checkoutBtn').disabled=false;$('checkoutBtn').textContent='Simpan Transaksi';}}
+async function checkout() {
+  if (busy) return;
+  if (!cart.length) return notify("Keranjang masih kosong.", true);
+  const items = cart.map(item => ({ ...item, subtotal: item.quantity * item.selling_price }));
+  const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+  const paid = Number($("paidAmount").value || 0);
+  if (!Number.isFinite(paid) || paid < total) return notify(`Pembayaran kurang ${rupiah(total - paid)}.`, true);
+  busy = true;
+  $("checkoutBtn").disabled = true;
+  $("checkoutBtn").textContent = "Menyimpan...";
+  try {
+    let savedSale;
+    if (mode === "LOCAL") {
+      for (const item of items) {
+        const product = products.find(p => p.product_id === item.product_id);
+        if (!product || product.stock < item.quantity) throw new Error(`Stok ${item.product_name} tidak mencukupi.`);
+      }
+      savedSale = { sale_id: uid("sale"), invoice_no: `INV-DEMO-${Date.now()}`, sale_date: new Date().toISOString(), payment_method: $("paymentMethod").value, total_amount: total, paid_amount: paid, change_amount: paid - total, items };
+      window.localSales.push(savedSale);
+      for (const item of items) {
+        const product = products.find(p => p.product_id === item.product_id);
+        product.stock -= item.quantity;
+        window.localMovements.push({ movement_id: uid("mov"), product_id: product.product_id, movement_type: "OUT", quantity: item.quantity, reference_no: savedSale.invoice_no, created_at: new Date().toISOString() });
+      }
+      persistLocal();
+    } else {
+      const result = await supabaseClient.rpc("create_sale", { p_payment_method: $("paymentMethod").value, p_paid_amount: paid, p_items: items.map(item => ({ product_id: item.product_id, quantity: item.quantity })) });
+      if (result.error) throw result.error;
+      savedSale = { ...result.data, items };
+    }
+    lastReceiptSaleId = savedSale.sale_id;
+    $("printLastReceiptBtn").hidden = false;
+    notify(`Transaksi ${savedSale.invoice_no} berhasil disimpan.`);
+    cart = [];
+    $("paidAmount").value = 0;
+    renderCart();
+    await refresh();
+    await loadDashboard();
+    await loadReport();
+  } catch (err) {
+    notify(normalizeError(err), true);
+  } finally {
+    busy = false;
+    $("checkoutBtn").disabled = false;
+    $("checkoutBtn").textContent = "Simpan Transaksi";
+  }
+}
 
 function openStockDialog(id){const p=products.find(x=>x.product_id===id);if(!p)return;$('stockProductId').value=id;$('stockProductName').textContent=`${p.product_code} - ${p.product_name}. Stok saat ini: ${qtyFormat(p.stock)} ${p.unit}`;$('stockQuantity').value='';$('stockNotes').value='';$('stockDialog').showModal();}window.openStockDialog=openStockDialog;
 async function saveStock(e){e.preventDefault();const id=$('stockProductId').value,q=Number($('stockQuantity').value);if(!Number.isFinite(q)||q<=0)return notify('Jumlah stok harus lebih dari 0.',true);try{if(mode==='LOCAL'){const p=products.find(x=>x.product_id===id);if(!p)throw new Error('Produk tidak ditemukan.');p.stock+=q;window.localMovements.push({movement_id:uid('mov'),product_id:id,movement_type:'IN',quantity:q,notes:$('stockNotes').value.trim(),created_at:new Date().toISOString()});persistLocal();}else{const r=await supabaseClient.rpc('add_stock',{p_product_id:id,p_quantity:q,p_movement_type:'IN',p_notes:$('stockNotes').value.trim()||'Penambahan stok'});if(r.error)throw r.error;}closeDialog('stockDialog');notify('Stok berhasil ditambahkan.');await refresh();await loadDashboard();}catch(err){notify(normalizeError(err),true);}}
 
-async function refresh(){if(mode==='LOCAL')loadLocalData();else await loadSupabaseData();renderAll();}
+async function refresh(){if(mode==='LOCAL')loadLocalData();else await loadSupabaseData();renderAll();await loadSalesHistory();}
 
 async function loadDashboard(){setText('statProducts',products.length);setText('statStock',qtyFormat(products.reduce((s,p)=>s+Number(p.stock||0),0)));let sales=[];if(mode==='LOCAL')sales=window.localSales||[];else{const d=new Date();d.setHours(0,0,0,0);const t=new Date(d);t.setDate(t.getDate()+1);const r=await supabaseClient.from('sales').select('*').gte('sale_date',d.toISOString()).lt('sale_date',t.toISOString()).order('sale_date',{ascending:false});if(r.error){notify(normalizeError(r.error),true);return;}sales=r.data||[];}setText('statSales',rupiah(sales.reduce((s,x)=>s+Number(x.total_amount||0),0)));setText('statTransactions',sales.length);const low=products.filter(p=>Number(p.stock)<=Number(p.minimum_stock)).slice(0,8);$('lowStockBody').innerHTML=low.length?low.map(p=>`<tr><td>${esc(p.product_code)}</td><td>${esc(p.product_name)}</td><td>${qtyFormat(p.stock)}</td><td>${stockBadge(p)}</td></tr>`).join(''):emptyRow(4,'Tidak ada stok menipis.');$('recentSalesBody').innerHTML=sales.length?sales.slice(0,8).map(s=>`<tr><td>${esc(s.invoice_no)}</td><td>${formatDate(s.sale_date)}</td><td>${rupiah(s.total_amount)}</td></tr>`).join(''):emptyRow(3,'Belum ada transaksi.');}
 
 function setDefaultReportDates(){const end=new Date(),start=new Date();start.setDate(start.getDate()-6);$('reportStart').value=dateInput(start);$('reportEnd').value=dateInput(end);}
-async function loadReport(){const start=$('reportStart').value,end=$('reportEnd').value;if(!start||!end)return;if(start>end)return notify('Tanggal awal tidak boleh setelah tanggal akhir.',true);let data=[];if(mode==='LOCAL'){const a=new Date(start+'T00:00:00'),b=new Date(end+'T23:59:59');data=(window.localSales||[]).filter(s=>new Date(s.sale_date)>=a&&new Date(s.sale_date)<=b).sort((x,y)=>new Date(y.sale_date)-new Date(x.sale_date));}else{const a=new Date(start+'T00:00:00'),b=new Date(end+'T23:59:59.999');const r=await supabaseClient.from('sales').select('*').gte('sale_date',a.toISOString()).lte('sale_date',b.toISOString()).order('sale_date',{ascending:false});if(r.error)return notify(normalizeError(r.error),true);data=r.data||[];}setText('reportCount',data.length);setText('reportTotal',rupiah(data.reduce((s,x)=>s+Number(x.total_amount||0),0)));$('reportsBody').innerHTML=data.length?data.map(s=>`<tr><td>${esc(s.invoice_no)}</td><td>${formatDate(s.sale_date)}</td><td>${esc(s.payment_method)}</td><td>${rupiah(s.total_amount)}</td><td>${rupiah(s.paid_amount)}</td><td>${rupiah(s.change_amount)}</td></tr>`).join(''):emptyRow(6,'Tidak ada transaksi pada periode tersebut.');}
+async function loadReport() {
+  const start = $("reportStart").value;
+  const end = $("reportEnd").value;
+  if (!start || !end) return;
+  if (start > end) return notify("Tanggal awal tidak boleh setelah tanggal akhir.", true);
+  const type = $("reportType").value;
+  const from = new Date(`${start}T00:00:00`);
+  const until = new Date(`${end}T00:00:00`);
+  until.setDate(until.getDate() + 1);
+  setText("reportPrintTitle", type === "sales" ? "Laporan Penjualan" : "Laporan Persediaan");
+  document.querySelector("#reports .section-toolbar h2").textContent = type === "sales" ? "Laporan Penjualan" : "Laporan Persediaan";
+  setText("reportPrintPeriod", `Periode: ${dateLabel(start)} s/d ${dateLabel(end)}`);
+  $("reportPrintHeading").hidden = false;
+
+  if (type === "sales") {
+    let sales;
+    if (mode === "LOCAL") {
+      sales = (window.localSales || []).filter(sale => new Date(sale.sale_date) >= from && new Date(sale.sale_date) < until).sort((a, b) => new Date(b.sale_date) - new Date(a.sale_date));
+      sales = await attachSaleItems(sales);
+    } else {
+      const result = await supabaseClient.from("sales").select("*").gte("sale_date", from.toISOString()).lt("sale_date", until.toISOString()).order("sale_date", { ascending: false });
+      if (result.error) return notify(normalizeError(result.error), true);
+      sales = await attachSaleItems(result.data || []);
+    }
+    reportRows = [];
+    let number = 0;
+    sales.forEach(sale => {
+      const items = sale.items?.length ? sale.items : [{ product_name: "-", quantity: 0, selling_price: 0, subtotal: Number(sale.total_amount || 0) }];
+      items.forEach(item => reportRows.push({ number: ++number, invoice: sale.invoice_no, date: formatDate(sale.sale_date), product: item.product_name || "-", quantity: Number(item.quantity || 0), price: Number(item.selling_price || 0), total: Number(item.subtotal ?? Number(item.quantity || 0) * Number(item.selling_price || 0)) }));
+    });
+    $("reportsHead").innerHTML = "<tr><th>No</th><th>Invoice</th><th>Tanggal</th><th>Produk</th><th>Qty</th><th>Harga</th><th>Total</th></tr>";
+    $("reportsBody").innerHTML = reportRows.length ? reportRows.map(row => `<tr><td>${row.number}</td><td>${esc(row.invoice)}</td><td>${esc(row.date)}</td><td>${esc(row.product)}</td><td>${qtyFormat(row.quantity)}</td><td>${rupiah(row.price)}</td><td>${rupiah(row.total)}</td></tr>`).join("") : emptyRow(7, "Tidak ada transaksi pada periode tersebut.");
+    setText("reportCount", sales.length);
+    setText("reportTotal", rupiah(sales.reduce((sum, sale) => sum + Number(sale.total_amount || 0), 0)));
+  } else {
+    let movements;
+    if (mode === "LOCAL") {
+      movements = (window.localMovements || []).filter(movement => new Date(movement.created_at) >= from && new Date(movement.created_at) < until).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    } else {
+      const result = await supabaseClient.from("stock_movements").select("*").gte("created_at", from.toISOString()).lt("created_at", until.toISOString()).order("created_at", { ascending: false });
+      if (result.error) return notify(normalizeError(result.error), true);
+      movements = result.data || [];
+    }
+    reportRows = movements.map(movement => ({ date: formatDate(movement.created_at), product: products.find(product => product.product_id === movement.product_id)?.product_name || "-", type: movement.movement_type, quantity: Number(movement.quantity), notes: movement.notes || movement.reference_no || "-" }));
+    $("reportsHead").innerHTML = "<tr><th>Tanggal</th><th>Produk</th><th>Jenis Transaksi</th><th>Jumlah</th><th>Keterangan</th></tr>";
+    $("reportsBody").innerHTML = reportRows.length ? reportRows.map(row => `<tr><td>${esc(row.date)}</td><td>${esc(row.product)}</td><td>${esc(row.type)}</td><td>${qtyFormat(row.quantity)}</td><td>${esc(row.notes)}</td></tr>`).join("") : emptyRow(5, "Tidak ada mutasi pada periode tersebut.");
+    setText("reportCount", movements.length);
+    setText("reportTotal", `${qtyFormat(movements.reduce((sum, movement) => sum + Number(movement.quantity || 0), 0))} unit`);
+  }
+  document.querySelector("#reports .report-summary span:first-child").firstChild.textContent = type === "sales" ? "Total transaksi: " : "Total mutasi: ";
+  document.querySelector("#reports .report-summary span:last-child").firstChild.textContent = type === "sales" ? "Total penjualan: " : "Total jumlah: ";
+}
+
+function exportExcel(page) {
+  if (!window.XLSX) return notify("Library Excel belum berhasil dimuat. Periksa koneksi internet.", true);
+  let headers;
+  let rows;
+  if (page === "products") {
+    headers = ["Kode Produk", "Nama Produk", "Kategori", "Harga Beli", "Harga Jual", "Stok", "Stok Minimum"];
+    rows = getFilteredProducts().map(product => [product.product_code, product.product_name, product.categories?.category_name || categoryName(product.category_id), Number(product.purchase_price), Number(product.selling_price), Number(product.stock), Number(product.minimum_stock)]);
+  } else if (page === "categories") {
+    headers = ["Nama Kategori", "Deskripsi", "Dibuat"];
+    rows = categories.map(category => [category.category_name, category.description || "", category.created_at ? new Date(category.created_at).toLocaleDateString("id-ID") : ""]);
+  } else if (page === "sales") {
+    headers = ["No Invoice", "Tanggal", "Produk", "Qty", "Harga", "Subtotal", "Total"];
+    rows = salesHistory.flatMap(sale => (sale.items?.length ? sale.items : [{ product_name: "-", quantity: 0, selling_price: 0, subtotal: Number(sale.total_amount || 0) }]).map(item => [sale.invoice_no, formatDate(sale.sale_date), item.product_name || "-", Number(item.quantity || 0), Number(item.selling_price || 0), Number(item.subtotal ?? Number(item.quantity || 0) * Number(item.selling_price || 0)), Number(sale.total_amount || 0)]));
+  } else if (page === "inventory") {
+    headers = ["Kode Produk", "Produk", "Kategori", "Stok", "Stok Minimum", "Status"];
+    rows = products.filter(product => product.is_active !== false).map(product => [product.product_code, product.product_name, product.categories?.category_name || categoryName(product.category_id), Number(product.stock), Number(product.minimum_stock), Number(product.stock) <= 0 ? "HABIS" : Number(product.stock) <= Number(product.minimum_stock) ? "MENIPIS" : "AMAN"]);
+  } else {
+    if ($("reportType").value === "sales") {
+      headers = ["No", "Invoice", "Tanggal", "Produk", "Qty", "Harga", "Total"];
+      rows = reportRows.map(row => [row.number, row.invoice, row.date, row.product, row.quantity, row.price, row.total]);
+    } else {
+      headers = ["Tanggal", "Produk", "Jenis Transaksi", "Jumlah", "Keterangan"];
+      rows = reportRows.map(row => [row.date, row.product, row.type, row.quantity, row.notes]);
+    }
+  }
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  worksheet["!cols"] = headers.map(header => ({ wch: Math.max(header.length + 2, 16) }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
+  const labels = { products: "Produk", categories: "Kategori", sales: "Penjualan", inventory: "Persediaan", reports: "Laporan" };
+  XLSX.writeFile(workbook, `RetailPro_${labels[page]}_${dateInput(new Date())}.xlsx`);
+}
+
+function printReceipt(saleId) {
+  const sale = salesHistory.find(item => item.sale_id === saleId) || (window.localSales || []).find(item => item.sale_id === saleId);
+  if (!sale) return notify("Data transaksi tidak ditemukan untuk dicetak.", true);
+  const items = sale.items || [];
+  const subtotal = items.reduce((sum, item) => sum + Number(item.subtotal ?? Number(item.quantity || 0) * Number(item.selling_price || 0)), 0);
+  const discount = Number(sale.discount_amount || 0);
+  $("receiptPrint").innerHTML = `<div class="receipt-brand">RETAILPRO</div><div class="receipt-subtitle">Sistem Penjualan &amp; Persediaan</div><div class="receipt-meta"><div>No Invoice: ${esc(sale.invoice_no)}</div><div>Tanggal: ${esc(formatDate(sale.sale_date))}</div></div><table><thead><tr><th>Produk</th><th>Qty</th><th>Harga</th><th>Total</th></tr></thead><tbody>${items.map(item => `<tr><td>${esc(item.product_name || "-")}</td><td>${qtyFormat(item.quantity)}</td><td>${rupiah(item.selling_price)}</td><td>${rupiah(item.subtotal ?? Number(item.quantity || 0) * Number(item.selling_price || 0))}</td></tr>`).join("")}</tbody></table><div class="receipt-totals"><div><span>Subtotal:</span><span>${rupiah(subtotal)}</span></div>${discount > 0 ? `<div><span>Diskon:</span><span>${rupiah(discount)}</span></div>` : ""}<div class="receipt-grand-total"><span>Total:</span><span>${rupiah(sale.total_amount)}</span></div></div><div class="receipt-thanks">Terima kasih.</div>`;
+  document.body.classList.add("print-receipt");
+  window.print();
+}
+window.printReceipt = printReceipt;
+window.addEventListener("afterprint", () => document.body.classList.remove("print-receipt"));
 
 function notify(message,error=false){const el=$('toast');if(!el)return;el.textContent=message;el.className='toast show'+(error?' error':'');clearTimeout(notify.timer);notify.timer=setTimeout(()=>el.className='toast',4000);}
 function formatDate(v){return v?new Date(v).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short'}):'-';}
+function dateLabel(value){const [year,month,day]=value.split('-');return `${day}-${month}-${year}`;}
 function dateInput(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function emptyRow(cols,text){return `<tr><td colspan="${cols}" class="muted">${esc(text)}</td></tr>`;}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}

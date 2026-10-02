@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Dokumentasi SIA Penjualan dan Persediaan Retail - RetailPro</title>
+<style>
+@page { size: A4; margin: 2cm; }
+body { font-family: Calibri, Arial, sans-serif; color: #202a31; font-size: 11pt; line-height: 1.45; max-width: 900px; margin: 34px auto; }
+h1 { color: #164e63; font-size: 28pt; line-height: 1.12; margin: 0 0 10px; }
+h2 { color: #164e63; font-size: 17pt; border-bottom: 2px solid #18a6a0; padding-bottom: 5px; margin-top: 27px; }
+h3 { color: #176b67; font-size: 13pt; margin-top: 18px; }
+p { margin: 7px 0 11px; }
+.cover { padding: 42px 35px; background: #edf6f4; border-left: 8px solid #18a6a0; margin: 20px 0 28px; }
+.kicker { color: #b45309; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; font-size: 10pt; }
+.meta { color: #52616b; margin-top: 20px; }
+.note { border-left: 4px solid #d97706; padding: 10px 14px; background: #fff7e8; margin: 14px 0; }
+.callout { border-left: 4px solid #16827c; padding: 10px 14px; background: #edf6f4; margin: 14px 0; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0 17px; font-size: 10pt; }
+th { background: #164e63; color: white; text-align: left; }
+th, td { padding: 7px 8px; border: 1px solid #cbd5d8; vertical-align: top; }
+tr:nth-child(even) td { background: #f4f8f8; }
+code, pre { font-family: Consolas, "Courier New", monospace; }
+pre { background: #f3f6f6; border: 1px solid #cbd5d8; padding: 13px; white-space: pre-wrap; font-size: 9pt; line-height: 1.35; }
+.small { color: #59666c; font-size: 9.5pt; }
+.page-break { page-break-before: always; }
+ul, ol { margin-top: 5px; }
+li { margin: 4px 0; }
+.footer { border-top: 1px solid #cbd5d8; color: #59666c; margin-top: 35px; padding-top: 8px; font-size: 9pt; }
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="kicker">Dokumentasi Sistem</div>
+  <h1>Sistem Informasi Akuntansi<br>Penjualan dan Persediaan Retail</h1>
+  <p><strong>Studi sistem:</strong> RetailPro V4</p>
+  <p class="meta">Uraian proses, skema basis data, flowchart, dan ERD<br>2 Oktober 2026</p>
+</div>
+
+<h2>1. Ringkasan Sistem</h2>
+<p>RetailPro V4 adalah aplikasi web untuk mengelola kategori dan produk, mencatat penjualan, mengurangi stok secara otomatis, mencatat stok masuk, serta menyajikan ringkasan dan laporan penjualan maupun persediaan. Aplikasi dapat berjalan dalam Mode Demo Lokal dengan penyimpanan browser (<em>localStorage</em>) atau menggunakan Supabase PostgreSQL.</p>
+<p>Dalam konteks Sistem Informasi Akuntansi (SIA), aplikasi menyediakan bukti transaksi operasional yang mendukung pengendalian penjualan dan persediaan. Data transaksi penjualan, nilai pembayaran, kembalian, harga jual saat transaksi, dan pergerakan kuantitas barang tersimpan sebagai jejak untuk laporan operasional.</p>
+<div class="note"><strong>Batas cakupan:</strong> skema saat ini belum memiliki jurnal umum, buku besar, akun, pemasok, transaksi pembelian, piutang, maupun laporan laba rugi. Karena itu, sistem ini belum menghasilkan laporan keuangan lengkap dan belum membentuk jurnal akuntansi otomatis. Istilah SIA pada dokumen ini merujuk pada dukungan informasi untuk siklus penjualan dan persediaan yang benar-benar tersedia.</div>
+
+<h2>2. Tujuan dan Ruang Lingkup</h2>
+<ul>
+<li>Menyimpan master kategori dan produk, termasuk harga beli, harga jual, satuan, stok, dan batas minimum stok.</li>
+<li>Mencatat transaksi penjualan melalui satu nomor invoice dengan satu atau lebih baris barang.</li>
+<li>Memvalidasi ketersediaan stok dan kecukupan pembayaran sebelum transaksi berhasil disimpan.</li>
+<li>Mengurangi stok berdasarkan kuantitas terjual dan mencatat mutasi keluar yang merujuk pada invoice.</li>
+<li>Mencatat penambahan stok dan menyediakan indikator stok aman, menipis, atau habis.</li>
+<li>Menyajikan riwayat, cetak struk, ringkasan dashboard, serta laporan penjualan/persediaan berdasarkan fitur aplikasi.</li>
+</ul>
+
+<h2>3. Arsitektur dan Aktor</h2>
+<table>
+<tr><th>Komponen</th><th>Peran</th><th>Implementasi yang tersedia</th></tr>
+<tr><td>Kasir / operator</td><td>Mengelola data barang, memasukkan transaksi, menerima pembayaran, serta menambah stok.</td><td>Antarmuka web RetailPro. Login yang tersedia adalah halaman demo dan tidak memverifikasi kredensial.</td></tr>
+<tr><td>Aplikasi frontend</td><td>Memvalidasi input dasar, membentuk keranjang, menghitung total/kembalian, menampilkan dashboard dan laporan.</td><td>HTML, CSS, dan JavaScript pada folder <code>frontend</code>.</td></tr>
+<tr><td>Mode Demo Lokal</td><td>Menjalankan fitur tanpa layanan backend.</td><td>Data disimpan di <code>localStorage</code> browser; bukan basis data terpusat.</td></tr>
+<tr><td>Mode Supabase</td><td>Menyimpan data bersama pada PostgreSQL serta menjalankan proses transaksi di server.</td><td>Supabase Data API dan fungsi RPC <code>create_sale</code> / <code>add_stock</code>.</td></tr>
+</table>
+<p>Alur umum data: operator menggunakan antarmuka, aplikasi membaca atau mengirim data ke penyimpanan lokal atau Supabase, lalu hasil transaksi dipakai untuk riwayat, dashboard, struk, dan laporan.</p>
+
+<h2>4. Skema Basis Data</h2>
+<p>Basis data Supabase terdiri dari lima tabel inti. Kolom UUID menjadi identitas utama. Nilai waktu dibuat otomatis dengan zona waktu; angka kuantitas menggunakan presisi tiga desimal dan harga menggunakan dua desimal.</p>
+<table>
+<tr><th>Tabel</th><th>Kolom penting</th><th>Fungsi dan aturan</th></tr>
+<tr><td><strong>categories</strong></td><td><code>category_id</code> (PK), <code>category_name</code> (unik), <code>description</code>, <code>created_at</code>, <code>updated_at</code></td><td>Master pengelompokan produk. Nama kategori unik; waktu pembaruan dikelola trigger.</td></tr>
+<tr><td><strong>products</strong></td><td><code>product_id</code> (PK), <code>category_id</code> (FK), <code>product_code</code> (unik), <code>product_name</code>, <code>unit</code>, <code>purchase_price</code>, <code>selling_price</code>, <code>stock</code>, <code>minimum_stock</code>, <code>is_active</code></td><td>Master barang sekaligus saldo stok terkini. Harga dan stok tidak boleh negatif. Produk terhubung ke satu kategori.</td></tr>
+<tr><td><strong>sales</strong></td><td><code>sale_id</code> (PK), <code>invoice_no</code> (unik), <code>sale_date</code>, <code>payment_method</code>, <code>total_amount</code>, <code>paid_amount</code>, <code>change_amount</code>, <code>cashier_id</code> (FK opsional)</td><td>Header transaksi: nomor dan waktu invoice, metode CASH/QRIS/TRANSFER, total, jumlah dibayar, dan kembalian. RPC saat ini mengisi <code>cashier_id</code> dengan NULL.</td></tr>
+<tr><td><strong>sale_items</strong></td><td><code>sale_item_id</code> (PK), <code>sale_id</code> (FK), <code>product_id</code> (FK), <code>quantity</code>, <code>selling_price</code>, <code>subtotal</code> (terhitung)</td><td>Rincian barang pada transaksi. Harga jual disalin saat transaksi agar riwayat tidak mengikuti perubahan harga master. Subtotal = kuantitas x harga jual.</td></tr>
+<tr><td><strong>stock_movements</strong></td><td><code>movement_id</code> (PK), <code>product_id</code> (FK), <code>movement_type</code>, <code>quantity</code>, <code>reference_no</code>, <code>notes</code>, <code>created_by</code> (FK opsional), <code>created_at</code></td><td>Jejak pergerakan stok bertipe OPENING, IN, OUT, atau ADJUSTMENT. Mutasi penjualan mengacu pada nomor invoice; mutasi masuk menyimpan catatan.</td></tr>
+</table>
+<p><strong>Referensi pengguna:</strong> <code>sales.cashier_id</code> dan <code>stock_movements.created_by</code> merujuk ke <code>auth.users(id)</code> Supabase dan dapat kosong. Aplikasi demo tidak mengisi identitas kasir/pembuat mutasi.</p>
+
+<h2>5. ERD dan Penjelasan Relasi</h2>
+<pre>+----------------------+        1       N        +----------------------+
+|      CATEGORIES      |------------------------&lt;|       PRODUCTS       |
+| PK category_id       |                         | PK product_id       |
+|    category_name UQ  |                         | FK category_id      |
++----------------------+                         |    product_code UQ  |
+                                                 |    stock            |
+                                                 +----+------------+---+
+                                                      |            |
+                                              1       |            |       1
+                         +----------------------------+            +--------------------------+
+                         | N                                                     N |
+              +----------v-----------+                              +-------------v----------+
+              |     SALE_ITEMS       |                              |    STOCK_MOVEMENTS     |
+              | PK sale_item_id      |                              | PK movement_id        |
+              | FK sale_id           |                              | FK product_id         |
+              | FK product_id        |                              |    movement_type      |
+              | quantity, price      |                              |    quantity, reference|
+              +----------+-----------+                              +------------------------+
+                         | N
+                         |                         Notasi: PK = primary key, FK = foreign key,
+                         |                         UQ = nilai unik; 1:N = satu ke banyak.
+                         | 1
+              +----------v-----------+
+              |        SALES         |
+              | PK sale_id           |
+              |    invoice_no UQ     |
+              |    total / paid      |
+              +----------------------+</pre>
+<p><strong>Relasi kategori-produk (1:N):</strong> satu kategori dapat mengelompokkan banyak produk, sementara setiap produk wajib memiliki satu kategori. Penghapusan kategori yang masih digunakan ditolak (<em>ON DELETE RESTRICT</em>).</p>
+<p><strong>Relasi penjualan-detail (1:N):</strong> satu header penjualan memuat banyak baris barang. Jika header penjualan dihapus, detailnya ikut dihapus (<em>ON DELETE CASCADE</em>). Satu produk dapat muncul di banyak detail penjualan.</p>
+<p><strong>Relasi produk-mutasi stok (1:N):</strong> satu produk dapat memiliki banyak catatan pergerakan stok. Produk yang telah dipakai pada transaksi atau mutasi tidak dapat dihapus secara fisik; aplikasi menawarkan penonaktifan agar riwayat tetap terjaga.</p>
+<p>ERD tidak menyimpan saldo stok pada tabel mutasi sebagai hasil agregasi. Saldo cepat dibaca dari <code>products.stock</code>, sedangkan <code>stock_movements</code> berfungsi sebagai jejak peristiwa yang menyebabkan perubahan.</p>
+
+<h2>6. Flowchart Proses Penjualan</h2>
+<pre> MULAI
+   |
+   v
+Pilih produk dan kuantitas
+   |
+   v
+Tambah ke keranjang -- stok lokal mencukupi? -- Tidak --> Tampilkan pesan, ubah keranjang
+   | Ya
+   v
+Hitung subtotal dan total
+   |
+   v
+Masukkan metode pembayaran dan nominal dibayar
+   |
+   v
+Nominal dibayar >= total? -- Tidak --> Tolak checkout, minta pembayaran yang cukup
+   | Ya
+   v
+Simpan transaksi
+   |-- Mode Lokal: simpan ke localStorage, kurangi stok, buat mutasi OUT
+   |-- Supabase: RPC create_sale memvalidasi dan mengunci produk
+   |              buat invoice, sales, sale_items, kurangi stok, buat mutasi OUT
+   v
+Transaksi berhasil? -- Tidak --> Batalkan proses dan tampilkan kesalahan
+   | Ya
+   v
+Tampilkan nomor transaksi / cetak struk
+   |
+   v
+Muat ulang stok, dashboard, riwayat, dan laporan
+   |
+ SELESAI</pre>
+<p>Pada Mode Supabase, fungsi <code>create_sale</code> memeriksa keranjang tidak kosong, nominal bayar valid, produk aktif, kuantitas positif, dan stok cukup. Produk dikunci selama validasi untuk menghindari dua checkout bersamaan menggunakan stok yang sama. Fungsi menghitung total dari harga jual master, menolak pembayaran kurang, menghasilkan nomor invoice, lalu menyimpan header dan detail, mengurangi stok, serta menulis mutasi OUT. Karena satu RPC dijalankan dalam transaksi PostgreSQL, kegagalan proses tidak meninggalkan sebagian pencatatan.</p>
+<div class="callout"><strong>Nilai transaksi:</strong> subtotal per detail = kuantitas x harga jual tersimpan. Total invoice = jumlah subtotal detail. Kembalian = jumlah dibayar - total invoice. Metode pembayaran dibatasi pada CASH, QRIS, dan TRANSFER.</div>
+
+<h2>7. Flowchart Proses Persediaan</h2>
+<pre>Tambah produk baru
+   |
+   +-- Stok awal = 0 ------------------------------> Simpan master produk
+   |
+   +-- Stok awal &gt; 0 (Supabase) -------------------> add_stock bertipe OPENING
+   |
+   v
+Stok masuk berikutnya
+   |
+   v
+Input kuantitas (&gt; 0) dan catatan
+   |
+   v
+add_stock / proses stok lokal
+   |
+   +--> Tambah products.stock
+   +--> Buat stock_movements bertipe IN
+   |
+   v
+Tampilkan saldo baru dan status stok
+   |
+ SELESAI
+
+Saat penjualan: products.stock dikurangi sejumlah quantity,
+dan stock_movements mencatat OUT dengan reference_no = invoice_no.
+Status: stock <= 0 = HABIS; stock <= minimum_stock = MENIPIS;
+selain itu = AMAN.</pre>
+<p>RPC <code>add_stock</code> menerima kuantitas positif dan tipe OPENING, IN, atau ADJUSTMENT, menambah saldo produk, lalu mencatat mutasinya. Meski tipe ADJUSTMENT tersedia, implementasi fungsi saat ini juga menambahkan kuantitas (bukan mengurangi stok). Untuk koreksi turun atau penyesuaian dua arah diperlukan proses khusus yang belum tersedia.</p>
+
+<h2>8. Informasi Akuntansi dan Pengendalian</h2>
+<table>
+<tr><th>Aspek</th><th>Informasi yang tersedia / kontrol yang diterapkan</th></tr>
+<tr><td>Bukti penjualan</td><td>Invoice unik, waktu transaksi, metode pembayaran, total, pembayaran, kembalian, dan detail barang dengan harga saat transaksi.</td></tr>
+<tr><td>Kontrol pembayaran</td><td>Checkout ditolak apabila pembayaran kurang dari total. Nilai total dan pembayaran tidak boleh negatif pada tabel.</td></tr>
+<tr><td>Kontrol persediaan</td><td>Stok dan kuantitas tidak boleh negatif; kuantitas detail harus lebih dari nol; stok diperiksa sebelum penjualan; produk dikunci saat RPC penjualan.</td></tr>
+<tr><td>Jejak mutasi</td><td>Stok masuk, stok awal, dan stok keluar dicatat per produk. Mutasi keluar transaksi menyimpan nomor invoice sebagai referensi.</td></tr>
+<tr><td>Master data</td><td>Kode produk dan nama kategori unik; produk dapat dinonaktifkan agar riwayat tidak hilang.</td></tr>
+<tr><td>Laporan</td><td>Ringkasan penjualan dan laporan penjualan/persediaan membantu pemantauan operasional. Aplikasi tidak membentuk jurnal debit-kredit.</td></tr>
+</table>
+<p>Harga beli disimpan pada master produk, tetapi tidak ada transaksi pembelian yang mengubah harga/kuantitas secara formal dan tidak ada metode penilaian persediaan seperti FIFO atau rata-rata tertimbang yang diterapkan. Dengan demikian, HPP dan laba kotor akuntansi tidak dapat dianggap sebagai keluaran terverifikasi dari sistem ini.</p>
+
+<h2>9. Catatan Implementasi dan Rekomendasi</h2>
+<ol>
+<li><strong>Autentikasi dan otorisasi:</strong> halaman login bersifat demo. Kebijakan RLS pada SQL memberikan akses luas untuk peran <code>anon</code> dan <code>authenticated</code>; konfigurasi ini tidak layak untuk data produksi tanpa pembatasan per pengguna/peran.</li>
+<li><strong>Identitas petugas:</strong> isi <code>cashier_id</code> dan <code>created_by</code> dari sesi pengguna terautentikasi agar tanggung jawab transaksi dapat ditelusuri.</li>
+<li><strong>Pengadaan dan HPP:</strong> jika dibutuhkan akuntansi lengkap, tambahkan pemasok, pembelian, detail pembelian, penerimaan barang, metode penilaian persediaan, serta pencatatan HPP.</li>
+<li><strong>Buku besar:</strong> tambahkan bagan akun, jurnal umum dan baris jurnal debit-kredit yang diturunkan dari kejadian bisnis, disertai rekonsiliasi dan laporan keuangan.</li>
+<li><strong>Koreksi stok:</strong> tetapkan aturan penyesuaian positif maupun negatif, alasan, pengguna yang menyetujui, dan referensi dokumen; jangan menggunakan fungsi tambah stok untuk koreksi yang mengurangi saldo.</li>
+<li><strong>Mode lokal:</strong> data browser hanya tersimpan pada perangkat/browser terkait dan bukan sumber data bersama; gunakan Supabase dengan kebijakan keamanan yang sesuai untuk operasional multi-pengguna.</li>
+</ol>
+
+<h2>10. Kesimpulan</h2>
+<p>RetailPro V4 menyediakan fondasi pencatatan siklus penjualan dan kontrol kuantitas persediaan: master barang, invoice dan detail penjualan, pembayaran, mutasi stok, serta laporan operasional. Relasi ERD memisahkan master data, header transaksi, rincian transaksi, dan jejak mutasi. Agar memenuhi SIA akuntansi retail yang lebih lengkap, sistem perlu dilengkapi dengan pembelian/pemasok, otorisasi produksi, penilaian HPP, jurnal umum, buku besar, dan laporan keuangan.</p>
+
+<div class="footer">Dokumentasi disusun dari implementasi RetailPro V4 pada skema SQL, fungsi RPC, frontend, dan README proyek. Untuk memperoleh DOCX: buka file HTML ini di Microsoft Word, lalu pilih Save As dan format Word Document (*.docx).</div>
+</body>
+</html>
